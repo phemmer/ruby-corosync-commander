@@ -1,5 +1,46 @@
 require 'corosync/cpg'
+require File.expand_path('../corosync_commander/execution', __FILE__)
+require File.expand_path('../corosync_commander/execution/message', __FILE__)
 
+# This provides a simplified interface into Corosync::CPG.
+# The main use case is for sending commands to a remote server, and waiting for the responses.
+# 
+# This library takes care of:
+# * Ensuring a consistent message format.
+# * Sending messages to all, or just specific nodes.
+# * Invoking the appropriate callback (and passing parameters) based on the command sent.
+# * Resonding with the return value of the callback.
+# * Handling exceptions and sending them back to the sender.
+# * Knowing exactly how many responses should be coming back.
+#
+# @example
+#   cc = CorosyncCommander.new
+#   cc.register('shell command') do |shellcmd|
+#     %x{#{shellcmd}}
+#   end
+#   cc.join('my group')
+#
+#   exe = cc.execute([], 'shell command', 'hostname')
+#
+#   enum = exe.to_enum
+#   hostnames = []
+#   begin
+#     enum.each do |response, node|
+#       hostname << response
+#     end
+#   rescue CorosyncCommander::RemoteException => e
+#     puts "Caught remote exception: #{e}"
+#     retry
+#   end
+#
+#   puts "Hostnames: #{hostnames.join(' ')}"
+#
+#
+# == IMPORTANT: Will not work without tuning ruby.
+# You cannot use this with MRI Ruby older than 2.0. Even with 2.0 you must tune ruby. This is because Corosync CPG (as of 1.4.3) allocates a 1mb buffer on the stack. Ruby 2.0 only allocates a 512kb stack for threads. This gem uses a thread for handling incoming messages. Thus if you try to use older ruby you will get segfaults.
+#
+# Ruby 2.0 allows increasing the thread stack size. You can do this with the RUBY_THREAD_MACHINE_STACK_SIZE environment variable. The advised value to set is 1.5mb.
+#   RUBY_THREAD_MACHINE_STACK_SIZE=1572864 ruby yourscript.rb
 class CorosyncCommander
 	require 'thread'
 	require 'sync'
@@ -7,22 +48,27 @@ class CorosyncCommander
 
 	attr_reader :cpg
 
-	def initialize(group_name)
+	attr_reader :execution_queues
+
+	# Creates a new instance and connects to CPG.
+	# If a group name is provided, it will join that group. Otherwise it will only connect. This is so that you can establish the command callbacks and avoid NotImplementedError exceptions
+	# @param group_name [String] Name of the group to join
+	def initialize(group_name = nil)
 		@cpg = Corosync::CPG.new
 		@cpg.on_message {|*args| cpg_message(*args)}
 		@cpg.on_confchg {|*args| cpg_confchg(*args)}
+		@cpg.connect
+		@cpg.fd.close_on_exec = true
 
 		# we can either share the msgid counter across all threads, or have a msgid counter on each thread and send the thread ID with each message. I prefer the former
-		@next_msgid = 0
-		@next_msgid_mutex = Mutex.new
+		@next_execution_id = 0
+		@next_execution_id_mutex = Mutex.new
 
-		@msgid_queues = {}
-		@msgid_queues.extend(Sync_m)
+		@execution_queues = {}
+		@execution_queues.extend(Sync_m)
 
 		@command_callbacks = {}
 		@command_callbacks.extend(Sync_m)
-
-		@cpg.join(group_name)
 
 		@dispatch_thread = Thread.new do
 			Thread.current.abort_on_exception = true
@@ -30,8 +76,22 @@ class CorosyncCommander
 				@cpg.dispatch
 			end
 		end
+
+		if group_name then
+			join(group_name)
+		end
 	end
 
+	# Joins the specified group.
+	# This is provided separate from initialization so that callbacks can be registered before joining the group so that you wont get NotImplementedError exceptions
+	# @param group_name [String] Name of group to join
+	# @return [void]
+	def join(group_name)
+		@cpg.join(group_name)
+	end
+
+	# Shuts down the dispatch thread and disconnects CPG
+	# @return [void]
 	def stop
 		@dispatch_thread.kill
 		@dispatch_thread = nil
@@ -39,13 +99,14 @@ class CorosyncCommander
 		@cpg = nil
 	end
 
-	def next_msgid()
-		msgid = nil
-		@next_msgid_mutex.synchronize do
-			msgid = @next_msgid += 1
+	def next_execution_id()
+		id = nil
+		@next_execution_id_mutex.synchronize do
+			id = @next_execution_id += 1
 		end
-		msgid
+		id
 	end
+	private :next_execution_id
 
 	# Used as a callback on receipt of a CPG message
 	# @param message [String] data structure passed to @cpg.send
@@ -61,157 +122,114 @@ class CorosyncCommander
 	# @param sender [Corosync::CPG::Member] Sender of the message
 	# @!visibility private
 	def cpg_message(message, sender)
-		message = JSON.parse(message)
-		recipients = message[0].map do |m|
-			nodeid,pid = m.split(':').map{|i| i.to_i}
-			Corosync::CPG::Member.new(nodeid,pid)
-		end
-		msgid = message[1]
-		type = message[2]
-		args = message[3..-1]
+		message = CorosyncCommander::Execution::Message.from_cpg_message(message, sender)
 
-		if sender == @cpg.member and type == 'command' then
-			# we've received our own message.
-			# This is used so that when someone is expecting a response, they can get the @cpg.members list at the time the message was sent and know who exactly will be receiving it.
-
-			# this is passed 
-			msgid_queue = nil
-			@msgid_queues.sync_synchronize(:SH) do
-				msgid_queue = @msgid_queues[msgid]
+		if sender == @cpg.member || message.recipients.include?(@cpg.member)
+			execution_queue = nil
+			@execution_queues.sync_synchronize(:SH) do
+				execution_queue = @execution_queues[message.execution_id]
 			end
-			# Here is where we take the snapshot of the current members and send it back in the 'echo' message'. This corresponds to the 'pending_members' code in #send
-			msgid_queue.push [sender, 'echo', *@cpg.members.to_a] if !msgid_queue.nil?
+			if !execution_queue.nil? then
+				# someone is listening
+				if sender == @cpg.member and message.type == 'command' then
+					# the Execution object needs a list of the members at the time it's message was received
+					message_echo = message.dup
+					message_echo.type = 'echo'
+					message_echo.content = @cpg.members.dup
+					execution_queue << message_echo
+				else
+					execution_queue << message
+				end
+			end
 		end
 
-		if recipients.size > 0 and !recipients.include?(@cpg.member) then
+		if message.recipients.size > 0 and !message.recipients.include?(@cpg.member) then
 			return
 		end
 
-		case(type)
-		when 'response','exception'
-			msgid_queue = nil
-			@msgid_queues.sync_synchronize(:SH) do
-				msgid_queue = @msgid_queues[msgid]
-			end
-			return if msgid_queue.nil? # nobody is listening
-
-			msgid_queue.push [sender, type, *args]
-		when 'command'
+		if message.type == 'command' then
 			# we received a command from another node
 			begin
 				# see if we've got a registered callback
 				command_callback = nil
+
+				command_name = message.content[0]
 				@command_callbacks.sync_synchronize(:SH) do
-					command_callback = @command_callbacks[args[0]]
+					command_callback = @command_callbacks[command_name]
 				end
 				if command_callback.nil? then
-					raise NotImplementedError, "No callback registered for command '#{args[0]}'"
+					raise NotImplementedError, "No callback registered for command '#{command_name}'"
 				end
 
-				reply = command_callback.call(*args[1..-1])
-				if !reply.nil? then
-					@cpg.send([[sender], msgid, 'response', reply].to_json)
-				end
+				command_args = message.content[1]
+				reply_value = command_callback.call(*command_args)
+				message_reply = message.reply(reply_value)
+				@cpg.send(message_reply)
 			rescue => e
-				@cpg.send([[sender], msgid, 'exception', e.class, e.to_s, e.backtrace].to_json)
+				message_reply = message.reply([e.class, e.to_s, e.backtrace])
+				message_reply.type = 'exception'
+				@cpg.send(message_reply)
 			end
 		end
 	end
 
+	# @!visibility private
 	def cpg_confchg(member_list, left_list, join_list)
 		# we look for any members leaving the cluster, and if so we notify all threads that are waiting for a response that they may have just lost a node
 		return if left_list.size == 0
-		msgid_queues = nil
-		@msgid_queues.sync_synchronize(:SH) do
-			msgid_queues = @msgid_queues.dup
+
+		messages = left_list.map do |member|
+			CorosyncCommander::Execution::Message.new(:sender => member, :type => 'leave')
 		end
-		msgid_queues.each do |msgid,queue|
-			left_list.each do |member|
-				queue.push [member, 'leave']
+
+		@execution_queues.sync_synchronize(:SH) do
+			@execution_queues.each do |queue|
+				messages.each do |message|
+					queue << message
+				end
 			end
 		end
 	end
 
+	# Register a command callback.
+	# When the specified command is received, the block will be executed, and the result sent back to the sender.
+	# @param command [String] Command to listen for
+	# @param block [Proc] Code to execute. Any parameters sent in the {#execute} call will be available to the block.
+	# @return [void]
 	def register(command, &block)
 		@command_callbacks.sync_synchronize(:EX) do
 			@command_callbacks[command] = block
 		end
 	end
 
-	def send(recipients, *args, &block)
-		if recipients.nil? or (recipients.is_a?(Array) and recipients.size == 0)
-			recipients = []
-		elsif !recipients.is_a?(Array)
-			recipients = [recipients]
+	# Execute a remote command.
+	# @param recipients [Array<Corosync::CPG::Member>] List of recipients to send to, or an empty array to broadcast to all members of the group.
+	# @param command [String] The name of the remote command to execute. If no such command exists on the remote node a NotImplementedError exception will be raised when enumerating the results.
+	# @param args Any further arguments will be passed to the command callback on the remote host.
+	# @return [CorosyncCommander::Execution]
+	def execute(recipients, command, *args)
+		execution = CorosyncCommander::Execution.new(self, next_execution_id, recipients, command, args)
+
+		message = CorosyncCommander::Execution::Message.new(:recipients => recipients, :execution_id => execution.id, :type => 'command', :content => [command, args])
+
+		@execution_queues.synchronize(:EX) do
+			@execution_queues[execution.id] = execution.queue
 		end
+		# Technique stolen from http://www.mikeperham.com/2010/02/24/the-trouble-with-ruby-finalizers/
+		#TODO We definitately need a spec test to validate the execution object gets garbage collected
+		ObjectSpace.define_finalizer(execution, execution_queue_finalizer(execution.id))
 
-		msgid = next_msgid
+		@cpg.send(message)
 
-		if block.nil? then
-			@cpg.send([recipients, msgid, 'command', *args].to_json)
-			return
-		end
-
-		# `block` isn't nil, so the caller expects a response from the other nodes in the cluster
-
-		# set up a queue for the cpg_message callback to add messages to
-		# this has to be set up before calling `@cpg.send` or we might have a race condition where the 'echo' comes back and we haven't set up the queue to receive it
-		queue = Queue.new
-		@msgid_queues.synchronize(:EX) do
-			@msgid_queues[msgid] = queue
-		end
-		begin
-			@cpg.send([recipients, msgid, 'command', *args].to_json)
-
-			# pending members is the list of members we are expecting a response from.
-			pending_members = nil
-			while pending_members.nil? do
-				# here we wait for the 'echo' message (our own message sent back to us)
-				# This is so that we can get all the members that were present at the time of the message so that we know who will be replying to a broadcast
-				message = queue.shift
-				message_sender = message[0]
-				message_type = message[1]
-				message_args = message[2..-1]
-				if message_type == 'leave' then
-					next # a node left the cluster, but we still havent received the echo, so we don't care
-				end
-				if message_type != 'echo' then
-					# We received a message, but it's not an 'echo'. This should not have happened
-					raise RuntimeError, "Received unexpected response while waiting for echo"
-				end
-
-				# message_args is the snapshot of @cpg.members taken in the cpg_message method
-				# If we were a broadcast (recipients == []), then we set `recipients` to all the members that were present at the time of our message.
-				# If we were sent to a specific list of recipients, we set `recipients` to all the target members that were present at the time of our message.
-				pending_members = recipients.size == 0 ? message_args : message_args & recipients
-			end
-
-			while pending_members.size > 0 do
-				message = queue.shift
-
-				message_sender = message[0]
-				message_type = message[1]
-				message_args = message[2..-1] # this is the equivalent of the `args` parameter to this method. It's what we receive
-
-				if message_type == 'exception' then
-					e_class = Kernel.const_get(message_args[0])
-					e_class = StandardError if e_class.nil? or !(e_class <= Exception)
-					e = e_class.new(message_args[1] + " (CorosyncCommander::RemoteException)")
-					e.set_backtrace(message_args[2])
-					raise e
-				end
-
-				yield message_sender, *message_args
-
-				pending_members.delete message_sender
-			end
-		ensure
-			# remove ourself from the expected response queue
-			@msgid_queues.synchronize(:EX) do
-				@msgid_queues.delete(msgid)
+		execution
+	end
+	# This is so that we remove our queue from the execution queue list when we get garbage collected.
+	def execution_queue_finalizer(execution_id)
+		proc do
+			@execution_queues.synchronize(:EX) do
+				@execution_queues.delete(execution_id)
 			end
 		end
 	end
-end
-class CorosyncCommander::RemoteException < Exception
+	private :execution_queue_finalizer
 end
