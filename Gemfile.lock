@@ -1,6 +1,7 @@
 GIT
   remote: git@github.com:phemmer/ruby-corosync.git
-  revision: 35edec9b6fa7f6e1185b95aa1adb22bca5f48337
+  revision: 81963f7eb8cbc872bbc19d03d97434b40bba8cda
+  branch: phemmer
   specs:
     corosync (0.0.1)
       ffi (~> 1.9)
@@ -9,7 +10,7 @@ GEM
   remote: https://rubygems.org/
   specs:
     diff-lcs (1.2.4)
-    ffi (1.9.1)
+    ffi (1.9.3)
     json (1.8.1)
     rake (10.1.0)
     rdoc (4.0.1)

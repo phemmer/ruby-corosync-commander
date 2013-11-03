@@ -41,10 +41,19 @@ describe CorosyncCommander do
 		end
 	end
 
-	it 'registers a callback' do
-		@cc.register('summation') do |arg1,arg2|
+	it 'registers a callback (block style)' do
+		@cc.commands.register 'summation' do |arg1,arg2|
 			arg1 + arg2
 		end
+
+		expect(@cc.commands['summation']).to be_a(Proc)
+	end
+
+	it 'registers a callback (assignment style)' do
+		@cc.commands['summation'] = Proc.new do |arg1,arg2|
+			arg1 + arg2
+		end
+		expect(@cc.commands['summation']).to be_a(Proc)
 	end
 
 	it 'calls the callback' do
@@ -60,7 +69,7 @@ describe CorosyncCommander do
 	it 'removes queues on garbage collection' do
 		GC.start
 		GC.disable
-		@cc.register('nothing') do end
+		@cc.commands.register('nothing') do end
 		queue_size_before = @cc.execution_queues.size
 		p = Proc.new do
 			@cc.execute([], 'nothing')

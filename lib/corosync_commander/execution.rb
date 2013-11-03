@@ -6,6 +6,7 @@ class CorosyncCommander::Execution
 	attr_reader :recipients
 	attr_reader :command
 	attr_reader :args
+	attr_reader :pending_members
 
 	def initialize(cc, id, recipients, command, args)
 		@cc = cc
@@ -23,7 +24,7 @@ class CorosyncCommander::Execution
 
 	# Gets the next response, blocking if none has been returned yet.
 	# This will also raise an exception if the remote process raised an exception. This can be tested by calling `exception.is_a?(CorosyncCommander::RemoteException)`
-	# @return [CorosyncCommander::RemoteException::Message] The response from the remote host. Returns `nil` when there are no more responses.
+	# @return [CorosyncCommander::Execution::Message] The response from the remote host. Returns `nil` when there are no more responses.
 	def response
 		response = get_response
 
@@ -35,6 +36,7 @@ class CorosyncCommander::Execution
 			e = e_class.new(response.content[1] + " (CorosyncCommander::RemoteException@#{response.sender})")
 			e.set_backtrace(response.content[2])
 			e.extend(CorosyncCommander::RemoteException)
+			e.sender = response.sender
 			raise e
 		end
 

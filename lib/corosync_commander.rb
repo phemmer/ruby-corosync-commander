@@ -1,6 +1,7 @@
 require 'corosync/cpg'
 require File.expand_path('../corosync_commander/execution', __FILE__)
 require File.expand_path('../corosync_commander/execution/message', __FILE__)
+require File.expand_path('../corosync_commander/callback_list', __FILE__)
 
 # This provides a simplified interface into Corosync::CPG.
 # The main use case is for sending commands to a remote server, and waiting for the responses.
@@ -15,7 +16,7 @@ require File.expand_path('../corosync_commander/execution/message', __FILE__)
 #
 # @example
 #   cc = CorosyncCommander.new
-#   cc.register('shell command') do |shellcmd|
+#   cc.commands.register('shell command') do |shellcmd|
 #     %x{#{shellcmd}}
 #   end
 #   cc.join('my group')
@@ -67,8 +68,7 @@ class CorosyncCommander
 		@execution_queues = {}
 		@execution_queues.extend(Sync_m)
 
-		@command_callbacks = {}
-		@command_callbacks.extend(Sync_m)
+		@command_callbacks = CorosyncCommander::CallbackList.new
 
 		@dispatch_thread = Thread.new do
 			Thread.current.abort_on_exception = true
@@ -154,9 +154,7 @@ class CorosyncCommander
 				command_callback = nil
 
 				command_name = message.content[0]
-				@command_callbacks.sync_synchronize(:SH) do
-					command_callback = @command_callbacks[command_name]
-				end
+				command_callback = @command_callbacks[command_name]
 				if command_callback.nil? then
 					raise NotImplementedError, "No callback registered for command '#{command_name}'"
 				end
@@ -191,15 +189,10 @@ class CorosyncCommander
 		end
 	end
 
-	# Register a command callback.
-	# When the specified command is received, the block will be executed, and the result sent back to the sender.
-	# @param command [String] Command to listen for
-	# @param block [Proc] Code to execute. Any parameters sent in the {#execute} call will be available to the block.
-	# @return [void]
-	def register(command, &block)
-		@command_callbacks.sync_synchronize(:EX) do
-			@command_callbacks[command] = block
-		end
+	# @!attribute [r] commands
+	# @return [CorosyncCommander::CallbackList] List of command callbacks
+	def commands
+		@command_callbacks
 	end
 
 	# Execute a remote command.
