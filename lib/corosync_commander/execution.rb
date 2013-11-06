@@ -120,5 +120,5 @@ class CorosyncCommander::Execution
 end
 
 module CorosyncCommander::RemoteException
-	# empty module that we use to extend remote exceptions with
+	attr_accessor :sender
 end

@@ -61,6 +61,8 @@ class CorosyncCommander
 		@cpg.connect
 		@cpg.fd.close_on_exec = true
 
+		@cpg_members = nil
+
 		# we can either share the msgid counter across all threads, or have a msgid counter on each thread and send the thread ID with each message. I prefer the former
 		@next_execution_id = 0
 		@next_execution_id_mutex = Mutex.new
@@ -97,6 +99,7 @@ class CorosyncCommander
 		@dispatch_thread = nil
 		@cpg.disconnect
 		@cpg = nil
+		@cpg_members = nil
 	end
 
 	def next_execution_id()
@@ -135,7 +138,7 @@ class CorosyncCommander
 					# the Execution object needs a list of the members at the time it's message was received
 					message_echo = message.dup
 					message_echo.type = 'echo'
-					message_echo.content = @cpg.members.dup
+					message_echo.content = @cpg_members
 					execution_queue << message_echo
 				else
 					execution_queue << message
@@ -173,6 +176,8 @@ class CorosyncCommander
 
 	# @!visibility private
 	def cpg_confchg(member_list, left_list, join_list)
+		@cpg_members = member_list
+
 		# we look for any members leaving the cluster, and if so we notify all threads that are waiting for a response that they may have just lost a node
 		return if left_list.size == 0
 

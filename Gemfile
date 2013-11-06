@@ -1,7 +1,7 @@
 # A sample Gemfile
 source "https://rubygems.org"
 
-gem 'corosync', :git => 'git@github.com:phemmer/ruby-corosync.git', :branch => 'phemmer'
+gem 'corosync', '~>0.0.3'
 
 group :development do
 	gem 'rake'
