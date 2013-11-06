@@ -27,7 +27,7 @@ require File.expand_path('../corosync_commander/callback_list', __FILE__)
 #   hostnames = []
 #   begin
 #     enum.each do |response, node|
-#       hostname << response
+#       hostnames << response
 #     end
 #   rescue CorosyncCommander::RemoteException => e
 #     puts "Caught remote exception: #{e}"
