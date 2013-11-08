@@ -44,7 +44,7 @@ describe CorosyncCommander do
 	end
 
 	it 'registers a callback (block style)' do
-		@cc.commands.register 'summation' do |arg1,arg2|
+		@cc.commands.register 'summation' do |sender,arg1,arg2|
 			arg1 + arg2
 		end
 
@@ -52,7 +52,7 @@ describe CorosyncCommander do
 	end
 
 	it 'registers a callback (assignment style)' do
-		@cc.commands['summation'] = Proc.new do |arg1,arg2|
+		@cc.commands['summation'] = Proc.new do |sender,arg1,arg2|
 			arg1 + arg2
 		end
 		expect(@cc.commands['summation']).to be_a(Proc)
@@ -95,7 +95,7 @@ describe CorosyncCommander do
 			num1 = Random.rand(2 ** 32)
 			num2 = Random.rand(2 ** 32)
 
-			@cc.commands.register('summation2') do |number|
+			@cc.commands.register('summation2') do |sender,number|
 				sum += number
 			end
 

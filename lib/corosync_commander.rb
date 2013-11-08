@@ -163,7 +163,7 @@ class CorosyncCommander
 				end
 
 				command_args = message.content[1]
-				reply_value = command_callback.call(*command_args)
+				reply_value = command_callback.call(message.sender, *command_args)
 				message_reply = message.reply(reply_value)
 				@cpg.send(message_reply)
 			rescue => e
@@ -177,6 +177,8 @@ class CorosyncCommander
 	# @!visibility private
 	def cpg_confchg(member_list, left_list, join_list)
 		@cpg_members = member_list
+
+		@confchg_callback.call(member_list, left_list, join_list) if @confchg_callback
 
 		# we look for any members leaving the cluster, and if so we notify all threads that are waiting for a response that they may have just lost a node
 		return if left_list.size == 0
@@ -192,6 +194,10 @@ class CorosyncCommander
 				end
 			end
 		end
+	end
+
+	def on_confchg(&block)
+		@confchg_callback = block
 	end
 
 	# @!attribute [r] commands
