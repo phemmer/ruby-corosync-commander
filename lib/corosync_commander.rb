@@ -188,10 +188,10 @@ class CorosyncCommander
 			@leader_pool.sync_synchronize(:EX) do
 				@leader_pool.replace(member_list.to_a)
 			end
-		end
-
-		if left_list.size > 0 then
-			@leader_pool.delete_if {|m| left_list.include?(m)}
+		elsif left_list.size > 0 then
+			@leader_pool.sync_synchronize(:EX) do
+				@leader_pool.delete_if {|m| left_list.include?(m)}
+			end
 		end
 
 		@confchg_callback.call(member_list, left_list, join_list) if @confchg_callback
@@ -264,8 +264,17 @@ class CorosyncCommander
 
 	# Indicates whether we are the group leader.
 	# If we are the leader, it means that we are the oldest member of the group.
+	# This is slightly different than just calling `leader_position == 0` in that if it is -1 (meaning we havent received the CPG confchg callback yet), we wait for the CPG join to complete.
 	# @return [Boolean]
 	def leader?
-		leader_position == 0
+		position = nil
+		loop do
+			position = leader_position
+			break if position != -1
+			Thread.pass # let the dispatch thread run so we can get our join message
+			# This isn't ideal as if the dispatch thread doesn't immediatly complete the join, we start spinning.
+			# But the only other way is to use condition variables, which combined with Sync_m, would just be really messy and stupidly complex (and I don't want to go to a plain mutex and lose the ability to use shared locks).
+		end
+		position == 0
 	end
 end
