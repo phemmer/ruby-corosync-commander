@@ -2,22 +2,6 @@ require 'spec_helper'
 require 'timeout'
 
 describe CorosyncCommander do
-	def fork_execute(wait, cc_recip, command, *args)
-		recip = cc_recip.cpg.member
-		pid = fork do
-			cc = CorosyncCommander.new(cc_recip.cpg.group)
-			exe = cc.execute([recip], command, *args)
-			exe.wait
-			exit!(0)
-		end
-		if wait then
-			status = Process.wait2(pid)
-			status.exitstatus
-		else
-			pid
-		end
-	end
-
 	before(:all) do
 		Timeout.timeout(1) do
 			@cc = CorosyncCommander.new("CorosyncCommander RSPEC #{Random.rand(2 ** 32)}")
@@ -177,5 +161,22 @@ describe CorosyncCommander do
 			expect(exceptions).to eq(1)
 			expect(responses.find_all{|r| r == 'OK'}.size).to eq(2)
 		end
+	end
+
+	it 'checks for leadership (true)' do
+		expect(@cc.leader?).to eq(true)
+	end
+
+	it 'checks for leadership (false)' do
+		forkpid = fork do
+			cc = CorosyncCommander.new(@cc.cpg.group)
+			if !cc.leader? then
+				exit 0 # we aren't a leader, as expected
+			end
+			exit 1 # something went wrong
+		end
+
+		status = Process.wait2(forkpid)
+		expect(status[1]).to eq(0)
 	end
 end

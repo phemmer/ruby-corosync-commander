@@ -63,6 +63,9 @@ class CorosyncCommander
 
 		@cpg_members = nil
 
+		@leader_pool = []
+		@leader_pool.extend(Sync_m)
+
 		# we can either share the msgid counter across all threads, or have a msgid counter on each thread and send the thread ID with each message. I prefer the former
 		@next_execution_id = 0
 		@next_execution_id_mutex = Mutex.new
@@ -178,6 +181,16 @@ class CorosyncCommander
 	def cpg_confchg(member_list, left_list, join_list)
 		@cpg_members = member_list
 
+		if leader_position == -1 then # this will only happen on join
+			@leader_pool.sync_synchronize(:EX) do
+				@leader_pool.replace(member_list.to_a)
+			end
+		end
+
+		if left_list.size > 0 then
+			@leader_pool.delete_if {|m| left_list.include?(m)}
+		end
+
 		@confchg_callback.call(member_list, left_list, join_list) if @confchg_callback
 
 		# we look for any members leaving the cluster, and if so we notify all threads that are waiting for a response that they may have just lost a node
@@ -236,4 +249,20 @@ class CorosyncCommander
 		end
 	end
 	private :execution_queue_finalizer
+
+	# Gets the member's position in the leadership queue.
+	# The leadership position is simply how many nodes currently in the group were in the group before we joined.
+	# @return [Integer]
+	def leader_position
+		@leader_pool.synchronize(:SH) do
+			@leader_pool.size - 1
+		end
+	end
+
+	# Indicates whether we are the group leader.
+	# If we are the leader, it means that we are the oldest member of the group.
+	# @return [Boolean]
+	def leader?
+		leader_position == 0
+	end
 end
