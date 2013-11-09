@@ -133,31 +133,41 @@ class CorosyncCommander
 	def cpg_message(message, sender)
 		message = CorosyncCommander::Execution::Message.from_cpg_message(message, sender)
 
-		if sender == @cpg.member || message.recipients.include?(@cpg.member)
+		# This is the possible message classifications
+		# Command echo (potentially also a command to us)
+		# Response echo
+		# Command to us
+		# Response to us
+		# Command to someone else
+		# Response to someone else
+
+		if message.type == 'command' and sender == @cpg.member then
+			# It's a command echo
 			execution_queue = nil
 			@execution_queues.sync_synchronize(:SH) do
 				execution_queue = @execution_queues[message.execution_id]
 			end
 			if !execution_queue.nil? then
 				# someone is listening
-				if sender == @cpg.member and message.type == 'command' then
-					# the Execution object needs a list of the members at the time it's message was received
-					message_echo = message.dup
-					message_echo.type = 'echo'
-					message_echo.content = @cpg_members
-					execution_queue << message_echo
-				else
-					execution_queue << message
-				end
+				message_echo = message.dup
+				message_echo.type = 'echo'
+				message_echo.content = @cpg_members
+				execution_queue << message_echo
+			end
+		elsif message.type != 'command' and message.recipients.include?(@cpg.member) then
+			# It's a response to us
+			execution_queue = nil
+			@execution_queues.sync_synchronize(:SH) do
+				execution_queue = @execution_queues[message.execution_id]
+			end
+			if !execution_queue.nil? then
+				# someone is listening
+				execution_queue << message
 			end
 		end
 
-		if message.recipients.size > 0 and !message.recipients.include?(@cpg.member) then
-			return
-		end
-
-		if message.type == 'command' then
-			# we received a command from another node
+		if message.type == 'command' and (message.recipients.size == 0 or message.recipients.include?(@cpg.member)) then
+			# It's a command to us
 			begin
 				# see if we've got a registered callback
 				command_callback = nil
