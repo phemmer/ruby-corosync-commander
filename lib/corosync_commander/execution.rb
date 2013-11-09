@@ -95,6 +95,9 @@ class CorosyncCommander::Execution
 		return if !@queue.is_a?(Queue) # we've called `clear`
 
 		while @pending_members.nil?
+			if Thread.current.object_id == @cc.dispatch_thread.object_id then
+				raise StandardError, "Deadlock! Can not call wait for responses on callback thread."
+			end
 			message = @queue.shift
 
 			next if message.type == 'leave' # we havent received the echo, so we dont care yet

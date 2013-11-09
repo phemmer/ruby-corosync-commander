@@ -51,6 +51,9 @@ class CorosyncCommander
 
 	attr_reader :execution_queues
 
+	# @!visibility private
+	attr_reader :dispatch_thread
+
 	# Creates a new instance and connects to CPG.
 	# If a group name is provided, it will join that group. Otherwise it will only connect. This is so that you can establish the command callbacks and avoid NotImplementedError exceptions
 	# @param group_name [String] Name of the group to join
