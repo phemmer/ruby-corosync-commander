@@ -101,9 +101,9 @@ class CorosyncCommander
 	# Shuts down the dispatch thread and disconnects CPG
 	# @return [void]
 	def stop
-		@dispatch_thread.kill
+		@dispatch_thread.kill if !@dispatch_thread.nil?
 		@dispatch_thread = nil
-		@cpg.disconnect
+		@cpg.close if !@cpg.nil?
 		@cpg = nil
 		@cpg_members = nil
 	end
