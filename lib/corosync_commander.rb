@@ -1,4 +1,5 @@
 require 'corosync/cpg'
+require 'corosync/quorum'
 require File.expand_path('../corosync_commander/execution', __FILE__)
 require File.expand_path('../corosync_commander/execution/message', __FILE__)
 require File.expand_path('../corosync_commander/callback_list', __FILE__)
@@ -64,6 +65,11 @@ class CorosyncCommander
 		@cpg.connect
 		@cpg.fd.close_on_exec = true
 
+		@quorum = Corosync::Quorum.new
+		@quorum.on_notify {|*args| quorum_notify(*args)}
+		@quorum.start(true)
+		@quorum.fd.close_on_exec = true
+
 		@cpg_members = nil
 
 		@leader_pool = []
@@ -81,7 +87,13 @@ class CorosyncCommander
 		@dispatch_thread = Thread.new do
 			Thread.current.abort_on_exception = true
 			loop do
-				@cpg.dispatch
+				select_ready = select([@cpg.fd, @quorum.fd], [], [])
+				if select_ready[0].include?(@cpg.fd) then
+					@cpg.dispatch
+				end
+				if select_ready[0].include?(@quorum.fd) then
+					@quorum.dispatch
+				end
 			end
 		end
 
@@ -103,9 +115,13 @@ class CorosyncCommander
 	def stop
 		@dispatch_thread.kill if !@dispatch_thread.nil?
 		@dispatch_thread = nil
+
 		@cpg.close if !@cpg.nil?
 		@cpg = nil
 		@cpg_members = nil
+
+		@quorum.finalize if !@quorum.nil?
+		@quorum = nil
 	end
 
 	def next_execution_id()
@@ -222,8 +238,24 @@ class CorosyncCommander
 		end
 	end
 
+	# Callback to execute when the CPG configuration changes
+	# @yieldparam node_list [Array] List of node IDs in group after change
+	# @yieldparam left_list [Array] List of node IDs which left the group
+	# @yieldparam join_list [Array] List of node IDs which joined the group
 	def on_confchg(&block)
 		@confchg_callback = block
+	end
+
+	# @!visibility private
+	def quorum_notify(quorate, node_list)
+		@quorumchg_callback.call(quorate, node_list) if @quorumchg_callback
+	end
+
+	# Callback to execute when the quorum state changes
+	# @yieldparam quorate [Boolean] Whether cluster is quorate
+	# @yieldparam member_list [Array] List of node IDs in the cluster after change
+	def on_quorumchg(&block)
+		@quorumchg_callback = block
 	end
 
 	# @!attribute [r] commands
