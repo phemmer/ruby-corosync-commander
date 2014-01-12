@@ -84,6 +84,10 @@ class CorosyncCommander
 
 		@command_callbacks = CorosyncCommander::CallbackList.new
 
+		if RUBY_ENGINE == 'ruby' and (Gem::Version.new(RUBY_VERSION) < Gem::Version.new('2.0.0') or ENV['RUBY_THREAD_MACHINE_STACK_SIZE'].to_i < 1572864) then
+			abort "MRI Ruby must be >= 2.0 and RUBY_THREAD_MACHINE_STACK_SIZE must be > 1572864"
+		end
+
 		@dispatch_thread = Thread.new do
 			Thread.current.abort_on_exception = true
 			loop do
