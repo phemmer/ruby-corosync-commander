@@ -114,6 +114,13 @@ class CorosyncCommander
 		@cpg.join(group_name)
 	end
 
+	# Leave the active CPG group.
+	# Will not stop quorum notifications. If you wish to stop quorum as well you should use {#stop} instead.
+	# @return [void]
+	def leave
+		@cpg.leave
+	end
+
 	# Shuts down the dispatch thread and disconnects CPG
 	# @return [void]
 	def stop
