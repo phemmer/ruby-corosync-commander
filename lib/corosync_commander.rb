@@ -27,7 +27,7 @@ require File.expand_path('../corosync_commander/callback_list', __FILE__)
 #   enum = exe.to_enum
 #   hostnames = []
 #   begin
-#     enum.each do |response, node|
+#     enum.each do |node, response|
 #       hostnames << response
 #     end
 #   rescue CorosyncCommander::RemoteException => e
@@ -67,7 +67,7 @@ class CorosyncCommander
 
 		@quorum = Corosync::Quorum.new
 		@quorum.on_notify {|*args| quorum_notify(*args)}
-		@quorum.start(true)
+		@quorum.connect
 		@quorum.fd.close_on_exec = true
 
 		@cpg_members = nil
@@ -101,6 +101,7 @@ class CorosyncCommander
 			end
 		end
 
+		@quorum.start(true)
 		if group_name then
 			join(group_name)
 		end
@@ -250,9 +251,9 @@ class CorosyncCommander
 	end
 
 	# Callback to execute when the CPG configuration changes
-	# @yieldparam node_list [Array] List of node IDs in group after change
-	# @yieldparam left_list [Array] List of node IDs which left the group
-	# @yieldparam join_list [Array] List of node IDs which joined the group
+	# @yieldparam node_list [Array<Integer>] List of node IDs in group after change
+	# @yieldparam left_list [Array<Integer>] List of node IDs which left the group
+	# @yieldparam join_list [Array<Integer>] List of node IDs which joined the group
 	def on_confchg(&block)
 		@confchg_callback = block
 	end
