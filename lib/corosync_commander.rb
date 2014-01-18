@@ -211,6 +211,7 @@ class CorosyncCommander
 				message_reply = message.reply(reply_value)
 				@cpg.send(message_reply)
 			rescue => e
+				$stderr.puts "Exception: #{e} (#{e.class})\n#{e.backtrace.join("\n")}"
 				message_reply = message.reply([e.class, e.to_s, e.backtrace])
 				message_reply.type = 'exception'
 				@cpg.send(message_reply)
