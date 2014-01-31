@@ -107,6 +107,7 @@ class CorosyncCommander::Execution
 
 			raise RuntimeError, "Received unexpected response while waiting for echo" if message.type != 'echo'
 
+			# CorosyncCommander#cpg_message sets the content to the list of cpg members at the time the echo was received
 			@pending_members = @recipients.size == 0 ? message.content.dup : message.content & @recipients
 		end
 
