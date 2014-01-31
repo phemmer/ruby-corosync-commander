@@ -182,6 +182,19 @@ class CorosyncCommander
 				message_echo.content = @cpg_members
 				execution_queue << message_echo
 			end
+		elsif message.type == 'leader reset' then
+			# The sender is requesting we reset their leader position
+			# For remote node, act as if the node left.
+			# For the local node, act as if we just joined.
+			if sender != @cpg.member then
+				@leader_pool.sync_synchronize(:EX) do
+					@leader_pool.delete(sender)
+				end
+			else
+				@leader_pool.sync_synchronize(:EX) do
+					@leader_pool.replace(@cpg_members.to_a)
+				end
+			end
 		elsif message.type != 'command' and message.recipients.include?(@cpg.member) then
 			# It's a response to us
 			execution_queue = nil
@@ -261,6 +274,15 @@ class CorosyncCommander
 
 	# @!visibility private
 	def quorum_notify(quorate, node_list)
+		return if @quorate == quorate # didn't change
+		@quorate = quorate
+
+		if quorate then
+			# we just became quorate
+			@leader_pool.replace(@cpg_members.to_a)
+			@cpg.send(CorosyncCommander::Execution::Message.new(:recipients => [], :type => 'leader reset')) # 'leader reset' simulates a leave and then a join of this node
+		end
+
 		@quorumchg_callback.call(quorate, node_list) if @quorumchg_callback
 	end
 
@@ -322,6 +344,12 @@ class CorosyncCommander
 	# This is slightly different than just calling `leader_position == 0` in that if it is -1 (meaning we havent received the CPG confchg callback yet), we wait for the CPG join to complete.
 	# @return [Boolean]
 	def leader?
+
+		# The way leadership works is that we record the members that were present when we joined the group in @leader_pool. Each time a node leaves the group, we remove them from @leader_pool. Once we become the only member in @leader_pool, we are the leader.
+		# Now in the event that the cluster splits, this becomes complicated. Each side will see the members of the other side leaving. So each side will end up with their own leader. Since they can't talk to eachother, having a leader in each group is perfectly fine. However when the 2 sides re-join, each side will see the members of the other side joining as new nodes, and both leaders will remain as leaders.
+		# We solve this by using the quorum status. When we go from inquorate to quorate, we give up our position. We send a 'leader reset' command to the cluster which tells everyone to remove us from their @leader_pool. When we receive the message ourself, we set @leader_pool to the group members at that moment.
+		# It doesn't matter if multiple members end up doing a 'leader reset' at the same time. It basically simulates the node leaving and then joining. Whoever performs the action first will move to the front. It will capture @leader_pool as the current members when it receives it's own message, and as the other resets come in, it will remove those members. Leaving itself in front of the ones that just joined (and reset after). But it will still remain after all the members that didn't do a reset.
+
 		position = nil
 		loop do
 			position = leader_position
