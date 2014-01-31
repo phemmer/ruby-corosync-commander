@@ -243,7 +243,7 @@ class CorosyncCommander
 		end
 
 		@execution_queues.sync_synchronize(:SH) do
-			@execution_queues.each do |queue|
+			@execution_queues.values.each do |queue|
 				messages.each do |message|
 					queue << message
 				end
@@ -331,5 +331,11 @@ class CorosyncCommander
 			# But the only other way is to use condition variables, which combined with Sync_m, would just be really messy and stupidly complex (and I don't want to go to a plain mutex and lose the ability to use shared locks).
 		end
 		position == 0
+	end
+
+	# List of current members
+	# @return [Array<Corosync::CPG::Member>] List of members currently in the group
+	def members
+		@cpg_members
 	end
 end

@@ -101,6 +101,31 @@ describe CorosyncCommander do
 		end
 	end
 
+	it 'handles pending responses when a node leaves' do
+		complete = false
+		Timeout.timeout(5) do
+			forkpid = fork do
+				cc = CorosyncCommander.new(@cc.cpg.group)
+				cc.commands.register('exit') do |sender|
+					sleep 2
+					exit!
+				end
+				cc.dispatch_thread.join
+				exit 1
+			end
+
+			sleep 1 # wait for the fork to connect
+
+			@cc.commands.register('exit') {} # ignore it
+			exe = @cc.execute([], 'exit')
+			exe.wait
+			complete = true
+			Process.kill('TERM', forkpid)
+		end
+
+		expect(complete).to eq(true)
+	end
+
 	it 'captures remote exceptions' do
 		Timeout.timeout(5) do
 			@cc.commands.register('make exception') do
