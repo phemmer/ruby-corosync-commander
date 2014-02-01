@@ -92,11 +92,11 @@ class CorosyncCommander
 			Thread.current.abort_on_exception = true
 			loop do
 				select_ready = select([@cpg.fd, @quorum.fd], [], [])
-				if select_ready[0].include?(@cpg.fd) then
-					@cpg.dispatch
-				end
 				if select_ready[0].include?(@quorum.fd) then
 					@quorum.dispatch
+				end
+				if select_ready[0].include?(@cpg.fd) then
+					@cpg.dispatch
 				end
 			end
 		end
@@ -279,7 +279,6 @@ class CorosyncCommander
 
 		if quorate then
 			# we just became quorate
-			@leader_pool.replace(@cpg_members.to_a)
 			@cpg.send(CorosyncCommander::Execution::Message.new(:recipients => [], :type => 'leader reset')) # 'leader reset' simulates a leave and then a join of this node
 		end
 
