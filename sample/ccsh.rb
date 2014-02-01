@@ -51,7 +51,6 @@ class CCSH
 	def cc_quorumchg(quorate, members)
 		msg = quorate ? "gained" : "lost"
 		$stderr.puts "Quorum #{msg}"
-		$stderr.puts "Members: #{members.map{|m| m.to_s}.join(' ')}"
 		$stderr.puts ""
 	end
 
