@@ -265,9 +265,9 @@ class CorosyncCommander
 	end
 
 	# Callback to execute when the CPG configuration changes
-	# @yieldparam node_list [Array<Integer>] List of node IDs in group after change
-	# @yieldparam left_list [Array<Integer>] List of node IDs which left the group
-	# @yieldparam join_list [Array<Integer>] List of node IDs which joined the group
+	# @yieldparam member_list [Array<Corosync::CPG::Member>] List of members in group after change
+	# @yieldparam left_list [Array<Corosync::CPG::Member>] List of members which left the group
+	# @yieldparam join_list [Array<Corosync::CPG::Member>] List of members which joined the group
 	def on_confchg(&block)
 		@confchg_callback = block
 	end
