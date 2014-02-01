@@ -365,6 +365,12 @@ class CorosyncCommander
 		position == 0
 	end
 
+	# Indicates whether cluster is quorate.
+	# @return [Boolean]
+	def quorate?
+		@quorate
+	end
+
 	# List of current members
 	# @return [Array<Corosync::CPG::Member>] List of members currently in the group
 	def members
