@@ -88,6 +88,14 @@ class CorosyncCommander
 			abort "MRI Ruby must be >= 2.0 and RUBY_THREAD_MACHINE_STACK_SIZE must be > 1572864"
 		end
 
+		join(group_name) if group_name
+	end
+
+	# Starts watching for notifications
+	# @return [void]
+	def start
+		@quorum.start(true)
+
 		@dispatch_thread = Thread.new do
 			Thread.current.abort_on_exception = true
 			loop do
@@ -100,11 +108,6 @@ class CorosyncCommander
 				end
 			end
 		end
-
-		@quorum.start(true)
-		if group_name then
-			join(group_name)
-		end
 	end
 
 	# Joins the specified group.
@@ -112,6 +115,8 @@ class CorosyncCommander
 	# @param group_name [String] Name of group to join
 	# @return [void]
 	def join(group_name)
+		start unless @dispatch_thread
+
 		@cpg.join(group_name)
 	end
 
