@@ -57,7 +57,7 @@ class CorosyncCommander::Execution
 		Enumerator.new do |block|
 			begin
 				while response = self.response do
-					block.yield response.content, response.sender
+					block.yield response.sender, response.content
 				end
 			rescue CorosyncCommander::RemoteException => e
 				retry if ignore.find {|extype| e.is_a?(extype)}

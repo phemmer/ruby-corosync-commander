@@ -44,7 +44,7 @@ describe CorosyncCommander do
 
 	it 'calls the callback' do
 		exe = @cc.execute([], 'summation', 123, 456)
-		results = exe.to_enum.collect do |response,node|
+		results = exe.to_enum.collect do |node,response|
 			response
 		end
 		
@@ -166,7 +166,7 @@ describe CorosyncCommander do
 			responses = []
 			exceptions = 0
 			begin
-				enum.each do |response,node|
+				enum.each do |node,response|
 					responses << response
 				end
 			rescue CorosyncCommander::RemoteException
