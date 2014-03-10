@@ -10,21 +10,21 @@ The key to this is that when you send a message to the cluster, you receive your
 
 There is a fully working example in the `examples` directory, but here's a brief condensed version:
 
-require 'corosync_commander'
-cc = CorosyncCommander.new
-cc.commands.register('shell command') do |sender, shellcmd|
-  %x{#{shellcmd}}
-end
-cc.join('remote commands')
-
-exe = cc.execute([], 'shell command', 'hostname')
-  enum = exe.to_enum
-  begin
-    enum.each do |sender, response|
-      $stdout.write "#{sender.nodeid}:#{sender.pid}: #{response.chomp}\n"
+    require 'corosync_commander'
+    cc = CorosyncCommander.new
+    cc.commands.register('shell command') do |sender, shellcmd|
+      %x{#{shellcmd}}
     end
-  rescue CorosyncCommander::RemoteException => e
-    puts "Caught remote exception: #{e}"
-    retry
-  end
-end
+    cc.join('remote commands')
+
+    exe = cc.execute([], 'shell command', 'hostname')
+      enum = exe.to_enum
+      begin
+        enum.each do |sender, response|
+          $stdout.write "#{sender.nodeid}:#{sender.pid}: #{response.chomp}\n"
+        end
+      rescue CorosyncCommander::RemoteException => e
+        puts "Caught remote exception: #{e}"
+        retry
+      end
+    end
