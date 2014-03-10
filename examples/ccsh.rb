@@ -1,4 +1,6 @@
 #!/usr/bin/env ruby
+# This is a more heavyweight example of the remote_commands example.
+# It utilizes additional features such as quorum. It follows the same principles though, and you can launch it as many times as you want to play with it.
 
 if RUBY_ENGINE == 'ruby' and ENV['RUBY_THREAD_MACHINE_STACK_SIZE'].to_i < 1572864 then
 	ENV['RUBY_THREAD_MACHINE_STACK_SIZE'] = '1572864'
@@ -72,7 +74,7 @@ class CCSH
 			else
 				# remote command
 				exe = @cc.execute([], 'sh', line)
-				exe.to_enum.each do |result, sender|
+				exe.to_enum.each do |sender, result|
 					status, output = result
 					output.split("\n").each do |line|
 						$stdout.write("#{sender}: #{line}\n")
