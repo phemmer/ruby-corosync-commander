@@ -17,7 +17,7 @@ require File.expand_path('../corosync_commander/callback_list', __FILE__)
 #
 # @example
 #   cc = CorosyncCommander.new
-#   cc.commands.register('shell command') do |shellcmd|
+#   cc.commands.register('shell command') do |sender, shellcmd|
 #     %x{#{shellcmd}}
 #   end
 #   cc.join('my group')
@@ -27,7 +27,7 @@ require File.expand_path('../corosync_commander/callback_list', __FILE__)
 #   enum = exe.to_enum
 #   hostnames = []
 #   begin
-#     enum.each do |node, response|
+#     enum.each do |sender, response|
 #       hostnames << response
 #     end
 #   rescue CorosyncCommander::RemoteException => e
