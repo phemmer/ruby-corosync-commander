@@ -9,7 +9,7 @@ class CorosyncCommander::Execution::Message
 	attr_accessor :type
 	attr_accessor :content
 
-	def self.from_cpg_message(data, sender)
+	def self.from_cpg_message(sender, data)
 		data = JSON.parse(data)
 
 		recipients = Corosync::CPG::MemberList.new

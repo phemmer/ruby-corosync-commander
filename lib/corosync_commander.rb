@@ -156,6 +156,7 @@ class CorosyncCommander
 	private :next_execution_id
 
 	# Used as a callback on receipt of a CPG message
+	# @param sender [Corosync::CPG::Member] Sender of the message
 	# @param message [String] data structure passed to @cpg.send
 	#   * message[0] == [Array<String>] Each string is "nodeid:pid" of the intended message recipients
 	#   * msgid == [Integer]
@@ -166,10 +167,9 @@ class CorosyncCommander
 	#     * In the event of a command, this will be the arguments passed to CorosyncCommander.send
 	#     * In the event of a response, this will be the return value of the command handler
 	#     * In the event of an exception, this will be the exception string and backtrace
-	# @param sender [Corosync::CPG::Member] Sender of the message
 	# @!visibility private
-	def cpg_message(message, sender)
-		message = CorosyncCommander::Execution::Message.from_cpg_message(message, sender)
+	def cpg_message(sender, message)
+		message = CorosyncCommander::Execution::Message.from_cpg_message(sender, message)
 
 		# This is the possible message classifications
 		# Command echo (potentially also a command to us)
