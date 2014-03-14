@@ -94,18 +94,23 @@ class CorosyncCommander
 	# Starts watching for notifications
 	# @return [void]
 	def start
-		@quorum.start(true)
+		@quorum.start
 
 		@dispatch_thread = Thread.new do
-			Thread.current.abort_on_exception = true
-			loop do
-				select_ready = select([@cpg.fd, @quorum.fd], [], [])
-				if select_ready[0].include?(@quorum.fd) then
-					@quorum.dispatch
+			begin
+				loop do
+					select_ready = select([@cpg.fd, @quorum.fd], [], [])
+					if select_ready[0].include?(@quorum.fd) then
+						@quorum.dispatch
+					end
+					if select_ready[0].include?(@cpg.fd) then
+						@cpg.dispatch
+					end
 				end
-				if select_ready[0].include?(@cpg.fd) then
-					@cpg.dispatch
-				end
+			rescue Exception => e
+				# something happened that we don't know how to handle. We need to bail out.
+				$stderr.write "Fatal exception: #{e.to_s} (#{e.class})\n#{e.backtrace.join("\n")}\n"
+				exit(1)
 			end
 		end
 	end
