@@ -23,7 +23,7 @@ PLATFORMS
   ruby
 
 DEPENDENCIES
-  corosync (~> 0.2.0.0)
+  corosync (~> 0.2.0)
   rake
   rdoc
   rspec
