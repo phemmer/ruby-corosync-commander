@@ -7,5 +7,5 @@ Gem::Specification.new 'corosync-commander', File.read('VERSION').chomp do |s|
 	s.license = 'MIT'
 	s.files = %x{git ls-files}.split("\n")
 
-	s.add_runtime_dependency 'corosync', '~> 0.1.0'
+	s.add_runtime_dependency 'corosync', '~> 0.2.0'
 end
